@@ -8,6 +8,25 @@ const MercadoLivreAPI = require('../services/mercadolivre');
 const tokenManager = require('../services/tokenManager');
 const { authenticateUser } = require('../middleware/auth');
 
+// ── DEBUG: Testar conexão com banco ─────────────────────────
+router.get('/debug/db-test', async (req, res) => {
+  try {
+    const db = getDb();
+    console.log('[DEBUG] db object:', typeof db, db.isPostgres);
+
+    const stmt = db.prepare('SELECT 1 as test');
+    console.log('[DEBUG] prepared statement:', typeof stmt);
+
+    const result = await stmt.get();
+    console.log('[DEBUG] query result:', result);
+
+    res.json({ success: true, result, isPostgres: db.isPostgres });
+  } catch (error) {
+    console.error('[DEBUG] Error:', error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 // ── Registro de usuário SaaS ────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
