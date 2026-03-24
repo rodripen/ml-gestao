@@ -68,6 +68,17 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// ── Teste OAuth ML (público - sem autenticação) ────────────
+app.get('/api/test-ml-oauth', (req, res) => {
+  const MercadoLivreAPI = require('./services/mercadolivre');
+  const authUrl = MercadoLivreAPI.getAuthUrl(
+    process.env.ML_APP_ID,
+    process.env.ML_REDIRECT_URI,
+    'test-user-id'
+  );
+  res.redirect(authUrl);
+});
+
 // ── Start ───────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n🚀 ML Gestão Backend rodando em http://localhost:${PORT}`);
