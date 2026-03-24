@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { getDb } = require('./config/database');
+const { initialize } = require('./config/database');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -12,9 +12,6 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
-
-// ── Inicializa banco ────────────────────────────────────────
-getDb();
 
 // ── Rotas ───────────────────────────────────────────────────
 app.use('/api/auth', require('./routes/auth'));
@@ -80,8 +77,21 @@ app.get('/api/test-ml-oauth', (req, res) => {
 });
 
 // ── Start ───────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`\n🚀 ML Gestão Backend rodando em http://localhost:${PORT}`);
-  console.log(`📋 Ferramentas MCP: GET http://localhost:${PORT}/api/mcp/tools`);
-  console.log(`🔑 OAuth ML: GET http://localhost:${PORT}/api/auth/ml/connect\n`);
-});
+async function start() {
+  try {
+    // Inicializar banco de dados
+    await initialize();
+
+    // Iniciar servidor
+    app.listen(PORT, () => {
+      console.log(`\n🚀 ML Gestão Backend rodando em http://localhost:${PORT}`);
+      console.log(`📋 Ferramentas MCP: GET http://localhost:${PORT}/api/mcp/tools`);
+      console.log(`🔑 OAuth ML: GET http://localhost:${PORT}/api/auth/ml/connect\n`);
+    });
+  } catch (error) {
+    console.error('❌ Erro ao iniciar servidor:', error);
+    process.exit(1);
+  }
+}
+
+start();
