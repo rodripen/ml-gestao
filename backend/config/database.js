@@ -116,7 +116,8 @@ async function initializePostgres() {
 
     console.log('🔄 Schema não encontrado, inicializando...');
 
-    const schemaPath = path.join(__dirname, '..', 'database', 'schema-postgresql.sql');
+    // Usar schema mínimo para evitar problemas com extensões no Railway
+    const schemaPath = path.join(__dirname, '..', 'database', 'schema-minimal.sql');
 
     if (!fs.existsSync(schemaPath)) {
       console.warn('⚠️  Schema PostgreSQL não encontrado em:', schemaPath);
@@ -161,7 +162,8 @@ async function initializePostgres() {
         // Split on semicolon only if not in dollar quote
         if (char === ';' && !inDollarQuote) {
           const stmt = current.trim();
-          if (stmt && !stmt.startsWith('--')) {
+          // Skip comments and CREATE EXTENSION (já executamos acima)
+          if (stmt && !stmt.startsWith('--') && !stmt.toUpperCase().includes('CREATE EXTENSION')) {
             statements.push(stmt);
           }
           current = '';
@@ -169,7 +171,7 @@ async function initializePostgres() {
       }
 
       // Add final statement if exists
-      if (current.trim()) {
+      if (current.trim() && !current.trim().startsWith('--') && !current.toUpperCase().includes('CREATE EXTENSION')) {
         statements.push(current.trim());
       }
 
