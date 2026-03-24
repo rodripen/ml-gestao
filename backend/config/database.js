@@ -101,21 +101,78 @@ async function initializePostgres() {
     const schema = fs.readFileSync(schemaPath, 'utf-8');
     const pgPool = getPostgresPool();
 
-    // Split schema into individual statements (separated by semicolons)
-    // Filter out empty statements and comments
-    const statements = schema
-      .split(';')
-      .map(stmt => stmt.trim())
-      .filter(stmt => stmt.length > 0 && !stmt.startsWith('--'));
+    // Get a client from the pool
+    const client = await pgPool.connect();
 
-    // Execute each statement
-    for (const statement of statements) {
-      if (statement.length > 0) {
-        await pgPool.query(statement);
+    try {
+      //  Split statements respecting $$ dollar-quoted strings
+      function splitSQLStatements(sql) {
+        const statements = [];
+        let current = '';
+        let inDollarQuote = false;
+        let dollarQuoteTag = null;
+
+        for (let i = 0; i < sql.length; i++) {
+          const char = sql[i];
+          const remaining = sql.substring(i);
+
+          // Check for start/end of dollar quote
+          if (remaining.startsWith('$$') || (remaining.startsWith('$') && remaining.match(/^\$\w*\$/))) {
+            const match = remaining.match(/^(\$\w*\$)/);
+            if (match) {
+              const tag = match[1];
+              current += tag;
+              i += tag.length - 1;
+
+              if (!inDollarQuote) {
+                inDollarQuote = true;
+                dollarQuoteTag = tag;
+              } else if (tag === dollarQuoteTag) {
+                inDollarQuote = false;
+                dollarQuoteTag = null;
+              }
+              continue;
+            }
+          }
+
+          current += char;
+
+          // Split on semicolon only if not in dollar quote
+          if (char === ';' && !inDollarQuote) {
+            const stmt = current.trim();
+            if (stmt && !stmt.startsWith('--')) {
+              statements.push(stmt);
+            }
+            current = '';
+          }
+        }
+
+        // Add final statement if exists
+        if (current.trim()) {
+          statements.push(current.trim());
+        }
+
+        return statements;
       }
-    }
 
-    console.log('✅ PostgreSQL inicializado com sucesso!');
+      const statements = splitSQLStatements(schema);
+      console.log(`🔄 Executando ${statements.length} statements SQL...`);
+
+      for (let i = 0; i < statements.length; i++) {
+        const stmt = statements[i];
+        try {
+          await client.query(stmt);
+        } catch (err) {
+          console.error(`❌ Erro no statement ${i + 1}/${statements.length}:`, err.message);
+          console.error('Statement preview:', stmt.substring(0, 200) + '...');
+          throw err;
+        }
+      }
+
+      console.log('✅ PostgreSQL inicializado com sucesso!');
+    } finally {
+      client.release();
+    }
   } catch (error) {
     console.error('❌ Erro ao inicializar PostgreSQL:', error.message);
     throw error;
