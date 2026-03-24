@@ -1,9 +1,9 @@
 -- Schema mínimo para PostgreSQL no Railway
--- Sem extensões, apenas tabelas básicas
+-- Usando VARCHAR para IDs (compatível com UUID gerado no código)
 
 -- Tabela de usuários
 CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
+  id VARCHAR(36) PRIMARY KEY,
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   name VARCHAR(255) NOT NULL,
@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Tabela de lojas/contas do ML
 CREATE TABLE IF NOT EXISTS stores (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   ml_user_id VARCHAR(50) NOT NULL,
   ml_nickname VARCHAR(100),
   ml_email VARCHAR(255),
@@ -33,8 +33,8 @@ CREATE TABLE IF NOT EXISTS stores (
 
 -- Tabela de templates de resposta
 CREATE TABLE IF NOT EXISTS response_templates (
-  id SERIAL PRIMARY KEY,
-  store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  id VARCHAR(36) PRIMARY KEY,
+  store_id VARCHAR(36) NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
   name VARCHAR(100) NOT NULL,
   template TEXT NOT NULL,
   variables JSON,
@@ -45,8 +45,8 @@ CREATE TABLE IF NOT EXISTS response_templates (
 
 -- Tabela de perguntas respondidas
 CREATE TABLE IF NOT EXISTS answered_questions (
-  id SERIAL PRIMARY KEY,
-  store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  id VARCHAR(36) PRIMARY KEY,
+  store_id VARCHAR(36) NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
   question_id VARCHAR(100) NOT NULL,
   item_id VARCHAR(50) NOT NULL,
   question_text TEXT NOT NULL,

@@ -48,6 +48,14 @@ function getSQLiteDb() {
 }
 
 // ────────────────────────────────────────────────────────────
+// Helper: Converte SQL com ? para PostgreSQL ($1, $2, ...)
+// ────────────────────────────────────────────────────────────
+function convertSQLToPostgres(sql) {
+  let count = 0;
+  return sql.replace(/\?/g, () => `$${++count}`);
+}
+
+// ────────────────────────────────────────────────────────────
 // Unified Database Interface
 // ────────────────────────────────────────────────────────────
 function getDb() {
@@ -56,25 +64,30 @@ function getDb() {
 
     // Wrapper para ter API similar ao SQLite
     return {
-      prepare: (sql) => ({
-        get: async (...params) => {
-          const result = await pgPool.query(sql, params);
-          return result.rows[0] || null;
-        },
-        all: async (...params) => {
-          const result = await pgPool.query(sql, params);
-          return result.rows;
-        },
-        run: async (...params) => {
-          const result = await pgPool.query(sql, params);
-          return { changes: result.rowCount };
-        }
-      }),
+      prepare: (sql) => {
+        const pgSql = convertSQLToPostgres(sql);
+        return {
+          get: async (...params) => {
+            const result = await pgPool.query(pgSql, params);
+            return result.rows[0] || null;
+          },
+          all: async (...params) => {
+            const result = await pgPool.query(pgSql, params);
+            return result.rows;
+          },
+          run: async (...params) => {
+            const result = await pgPool.query(pgSql, params);
+            return { changes: result.rowCount };
+          }
+        };
+      },
       query: async (sql, params = []) => {
-        return await pgPool.query(sql, params);
+        const pgSql = convertSQLToPostgres(sql);
+        return await pgPool.query(pgSql, params);
       },
       exec: async (sql) => {
-        return await pgPool.query(sql);
+        const pgSql = convertSQLToPostgres(sql);
+        return await pgPool.query(pgSql);
       },
       pool: pgPool,
       isPostgres: true
@@ -96,16 +109,6 @@ async function initializePostgres() {
     // Teste de conexão primeiro
     const client = await pgPool.connect();
     console.log('✅ Conectado ao PostgreSQL com sucesso!');
-
-    // Por enquanto, apenas testar conexão
-    const testResult = await client.query('SELECT 1 as test');
-    console.log('✅ Teste de query funcionou:', testResult.rows[0]);
-
-    client.release();
-    console.log('✅ PostgreSQL está funcionando!');
-    return;
-
-    // TODO: Implementar schema depois que conexão estiver funcionando
 
     // Usar schema mínimo para evitar problemas com extensões no Railway
     const schemaPath = path.join(__dirname, '..', 'database', 'schema-minimal.sql');
