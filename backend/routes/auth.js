@@ -84,22 +84,17 @@ router.get('/me', authenticateUser, async (req, res) => {
 
 // ── Conectar loja ML (inicia OAuth) ─────────────────────────
 router.get('/ml/connect', authenticateUser, async (req, res) => {
-  const crypto = require('crypto');
-  const db = getDb();
-
-  // Gera token criptográfico para state (CSRF protection)
-  const stateToken = crypto.randomUUID();
-
-  // Salva o mapeamento state -> userId (expira em 10 min)
-  // Usando uma coluna temporária ou armazenando no formato state:userId
-  // Para simplicidade, codificamos: base64(stateToken:userId)
-  const stateData = Buffer.from(`${stateToken}:${req.user.id}`).toString('base64url');
+  // Simplificado: usa apenas userId como state
+  // TODO: Melhorar segurança com CSRF token depois
+  const state = req.user.id;
 
   const authUrl = MercadoLivreAPI.getAuthUrl(
     process.env.ML_APP_ID,
     process.env.ML_REDIRECT_URI,
-    stateData
+    state
   );
+
+  console.log('[ML CONNECT] Generated auth URL for user:', req.user.id);
   res.json({ authUrl });
 });
 
@@ -110,23 +105,11 @@ router.get('/ml/callback', async (req, res) => {
 
     console.log('[ML CALLBACK] Received:', { code: !!code, state });
 
-    // Decodifica state seguro
-    let userId;
-    try {
-      if (!state) {
-        throw new Error('No state provided');
-      }
-      const decoded = Buffer.from(state, 'base64url').toString();
-      console.log('[ML CALLBACK] Decoded state:', decoded);
+    // Simplificado: state é apenas o userId
+    const userId = state;
 
-      const parts = decoded.split(':');
-      if (parts.length !== 2 || !parts[0] || !parts[1]) {
-        throw new Error('Invalid state format');
-      }
-      userId = parts[1];
-      console.log('[ML CALLBACK] User ID extracted:', userId);
-    } catch (e) {
-      console.error('[ML CALLBACK] State error:', e.message);
+    if (!userId) {
+      console.error('[ML CALLBACK] No state/userId provided');
       const frontendUrl = process.env.FRONTEND_URL || 'https://ml-gestao.vercel.app';
       return res.redirect(`${frontendUrl}/lojas?error=invalid_state`);
     }
