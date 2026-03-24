@@ -224,13 +224,11 @@ async function initialize() {
   if (usePostgres) {
     console.log('🐘 Usando PostgreSQL (produção)');
     console.log('DATABASE_URL definida:', !!process.env.DATABASE_URL);
+    console.log('RECREATE_SCHEMA:', process.env.RECREATE_SCHEMA);
 
-    try {
-      await initializePostgres();
-    } catch (error) {
-      console.error('⚠️  AVISO: Erro ao inicializar PostgreSQL, continuando sem banco:', error.message);
-      // Continuar mesmo se falhar - permite debug
-    }
+    // NÃO engolir erros - se schema falhar, servidor não deve iniciar!
+    await initializePostgres();
+    console.log('✅ PostgreSQL completamente inicializado!');
   } else {
     console.log('💾 Usando SQLite (desenvolvimento)');
     getSQLiteDb(); // Inicializa SQLite
