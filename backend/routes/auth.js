@@ -108,16 +108,25 @@ router.get('/ml/callback', async (req, res) => {
   try {
     const { code, state } = req.query;
 
+    console.log('[ML CALLBACK] Received:', { code: !!code, state });
+
     // Decodifica state seguro
     let userId;
     try {
+      if (!state) {
+        throw new Error('No state provided');
+      }
       const decoded = Buffer.from(state, 'base64url').toString();
+      console.log('[ML CALLBACK] Decoded state:', decoded);
+
       const parts = decoded.split(':');
       if (parts.length !== 2 || !parts[0] || !parts[1]) {
         throw new Error('Invalid state format');
       }
       userId = parts[1];
+      console.log('[ML CALLBACK] User ID extracted:', userId);
     } catch (e) {
+      console.error('[ML CALLBACK] State error:', e.message);
       const frontendUrl = process.env.FRONTEND_URL || 'https://ml-gestao.vercel.app';
       return res.redirect(`${frontendUrl}/lojas?error=invalid_state`);
     }
