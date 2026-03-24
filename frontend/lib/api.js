@@ -32,14 +32,38 @@ class ApiClient {
       ...options.headers
     };
 
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      ...options,
-      headers
-    });
+    let res;
+    try {
+      res = await fetch(`${this.baseUrl}${path}`, {
+        ...options,
+        headers
+      });
+    } catch (networkError) {
+      throw new Error('Erro de conexão. Verifique sua internet e tente novamente.');
+    }
+
+    // Verifica se a resposta é JSON antes de parsear
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      if (!res.ok) {
+        throw new Error(`Erro do servidor (${res.status}). Tente novamente em alguns instantes.`);
+      }
+      throw new Error('Resposta inesperada do servidor.');
+    }
 
     const data = await res.json();
+
+    // Token expirado — limpa e redireciona
+    if (res.status === 401) {
+      this.clearToken();
+      if (typeof window !== 'undefined') {
+        window.location.reload();
+      }
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
     if (!res.ok) {
-      throw new Error(data.error || 'Erro na requisição');
+      throw new Error(data.error || `Erro na requisição (${res.status})`);
     }
     return data;
   }

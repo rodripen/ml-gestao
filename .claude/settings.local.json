@@ -4,7 +4,12 @@
       "Bash(findstr :3000)",
       "Bash(npm start)",
       "Bash(npm run dev)",
-      "Bash(touch .env.example)"
+      "Bash(touch .env.example)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :3001)",
+      "Bash(git ls-tree -r HEAD --name-only)",
+      "Bash(git add backend/routes/auth.js)",
+      "Bash(git commit -m \"Fix PostgreSQL async/await in auth routes\n\n- Separate db.prepare() and await stmt.get/all/run calls\n- Add async to all route handlers that use database\n- Add proper error handling to all routes\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\")"
     ],
     "deny": [],
     "ask": []

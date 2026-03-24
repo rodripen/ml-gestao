@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { initialize } = require('./config/database');
+const { authenticateUser } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,7 +23,7 @@ app.use('/api/metrics', require('./routes/metrics'));
 // ── MCP endpoint (para ferramentas IA) ──────────────────────
 const mcpTools = require('./mcp/tools');
 
-app.post('/api/mcp/execute', async (req, res) => {
+app.post('/api/mcp/execute', authenticateUser, async (req, res) => {
   try {
     const { tool, params } = req.body;
 
@@ -45,7 +46,7 @@ app.post('/api/mcp/execute', async (req, res) => {
 });
 
 // Lista ferramentas disponíveis
-app.get('/api/mcp/tools', (req, res) => {
+app.get('/api/mcp/tools', authenticateUser, (req, res) => {
   const tools = [
     { name: 'listar_anuncios_fracos', description: 'Lista anúncios com baixa performance', params: ['storeId', 'minDays?', 'maxVisits?', 'maxSales?'] },
     { name: 'analisar_anuncio', description: 'Analisa um anúncio em detalhes', params: ['storeId', 'itemId'] },
@@ -72,17 +73,6 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// ── Teste OAuth ML (público - sem autenticação) ────────────
-app.get('/api/test-ml-oauth', (req, res) => {
-  const MercadoLivreAPI = require('./services/mercadolivre');
-  const authUrl = MercadoLivreAPI.getAuthUrl(
-    process.env.ML_APP_ID,
-    process.env.ML_REDIRECT_URI,
-    'test-user-id'
-  );
-  res.redirect(authUrl);
-});
-
 // ── Start ───────────────────────────────────────────────────
 async function start() {
   try {
@@ -90,6 +80,11 @@ async function start() {
     console.log('📊 Ambiente:', process.env.NODE_ENV || 'development');
     console.log('🔌 Porta:', PORT);
     console.log('🔗 DATABASE_URL presente:', !!process.env.DATABASE_URL);
+
+    // Validar variáveis obrigatórias
+    if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'change-this-to-a-random-string-minimum-32-chars') {
+      throw new Error('JWT_SECRET não configurado! Gere uma chave segura com: openssl rand -base64 32');
+    }
 
     // Inicializar banco de dados (obrigatório!)
     if (process.env.SKIP_DB_INIT !== 'true') {

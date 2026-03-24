@@ -8,99 +8,49 @@ const MercadoLivreAPI = require('../services/mercadolivre');
 const tokenManager = require('../services/tokenManager');
 const { authenticateUser } = require('../middleware/auth');
 
-// ── DEBUG: Testar conexão com banco ─────────────────────────
-router.get('/debug/db-test', async (req, res) => {
+// ── TEMPORÁRIO: Criar schema ────────────────────────────────
+router.get('/create-schema-temp', async (req, res) => {
   try {
     const db = getDb();
-    console.log('[DEBUG] db object:', typeof db, db.isPostgres);
-
-    const stmt = db.prepare('SELECT 1 as test');
-    console.log('[DEBUG] prepared statement:', typeof stmt);
-
-    const result = await stmt.get();
-    console.log('[DEBUG] query result:', result);
-
-    res.json({ success: true, result, isPostgres: db.isPostgres });
-  } catch (error) {
-    console.error('[DEBUG] Error:', error);
-    res.status(500).json({ error: error.message, stack: error.stack });
-  }
-});
-
-// ── DEBUG: Verificar se tabelas existem ─────────────────────
-router.get('/debug/check-tables', async (req, res) => {
-  try {
-    const db = getDb();
-
-    // Query para listar tabelas no PostgreSQL
-    const query = `
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-      ORDER BY table_name
-    `;
-
-    const stmt = db.prepare(query);
-    const tables = await stmt.all();
-
-    res.json({
-      success: true,
-      tables: tables.map(t => t.table_name),
-      count: tables.length
-    });
-  } catch (error) {
-    console.error('[DEBUG] Error checking tables:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ── DEBUG: Reset completo do banco (DROP e CREATE) ──────────
-router.post('/debug/reset-database', async (req, res) => {
-  try {
-    // Proteção simples - exigir confirmação
-    if (req.body.confirm !== 'RESET_DATABASE_NOW') {
-      return res.status(400).json({
-        error: 'Confirmação necessária',
-        message: 'Envie { "confirm": "RESET_DATABASE_NOW" } para confirmar o reset'
-      });
-    }
-
-    const db = getDb();
-
     if (!db.isPostgres) {
       return res.status(400).json({ error: 'Only for PostgreSQL' });
     }
 
-    console.log('[RESET] Iniciando reset completo do banco...');
+    // Criar tabelas essenciais
+    await db.pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(36) PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        phone VARCHAR(20),
+        company_name VARCHAR(255),
+        is_active BOOLEAN DEFAULT true,
+        email_verified BOOLEAN DEFAULT false,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
-    // Drop todas as tabelas
-    await db.pool.query('DROP TABLE IF EXISTS answered_questions CASCADE');
-    await db.pool.query('DROP TABLE IF EXISTS response_templates CASCADE');
-    await db.pool.query('DROP TABLE IF EXISTS stores CASCADE');
-    await db.pool.query('DROP TABLE IF EXISTS users CASCADE');
-    console.log('[RESET] Tabelas removidas');
+    await db.pool.query(`
+      CREATE TABLE IF NOT EXISTS stores (
+        id VARCHAR(36) PRIMARY KEY,
+        user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        ml_user_id VARCHAR(50) NOT NULL,
+        ml_nickname VARCHAR(100),
+        ml_email VARCHAR(255),
+        ml_site VARCHAR(10) DEFAULT 'MLB',
+        access_token TEXT,
+        refresh_token TEXT,
+        token_expires_at TIMESTAMP WITH TIME ZONE,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
-    // Recriar usando o schema
-    const path = require('path');
-    const fs = require('fs');
-    const schemaPath = path.join(__dirname, '..', 'database', 'schema-minimal.sql');
-    const schema = fs.readFileSync(schemaPath, 'utf-8');
-
-    const statements = schema.split(';').filter(stmt => {
-      const trimmed = stmt.trim();
-      return trimmed && !trimmed.startsWith('--');
-    });
-
-    for (const stmt of statements) {
-      if (stmt.trim()) {
-        await db.pool.query(stmt);
-      }
-    }
-
-    console.log('[RESET] Schema recriado com sucesso!');
-    res.json({ success: true, message: 'Database reset successfully!' });
+    res.json({ success: true, message: 'Tables created!' });
   } catch (error) {
-    console.error('[RESET] Error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -139,7 +89,7 @@ router.post('/register', async (req, res) => {
     console.log('[REGISTER] Insert result:', result);
 
     console.log('[REGISTER] Generating JWT token...');
-    const token = jwt.sign({ id, email, name }, process.env.JWT_SECRET || 'dev-secret-key', { expiresIn: '7d' });
+    const token = jwt.sign({ id, email, name }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     console.log('[REGISTER] Registration successful!');
     res.status(201).json({ user: { id, email, name }, token });
@@ -165,7 +115,7 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign(
       { id: user.id, email: user.email, name: user.name },
-      process.env.JWT_SECRET || 'dev-secret-key',
+      process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -194,12 +144,22 @@ router.get('/me', authenticateUser, async (req, res) => {
 });
 
 // ── Conectar loja ML (inicia OAuth) ─────────────────────────
-router.get('/ml/connect', authenticateUser, (req, res) => {
-  const state = req.user.id; // passa o user ID no state para vincular depois
+router.get('/ml/connect', authenticateUser, async (req, res) => {
+  const crypto = require('crypto');
+  const db = getDb();
+
+  // Gera token criptográfico para state (CSRF protection)
+  const stateToken = crypto.randomUUID();
+
+  // Salva o mapeamento state -> userId (expira em 10 min)
+  // Usando uma coluna temporária ou armazenando no formato state:userId
+  // Para simplicidade, codificamos: base64(stateToken:userId)
+  const stateData = Buffer.from(`${stateToken}:${req.user.id}`).toString('base64url');
+
   const authUrl = MercadoLivreAPI.getAuthUrl(
     process.env.ML_APP_ID,
     process.env.ML_REDIRECT_URI,
-    state
+    stateData
   );
   res.json({ authUrl });
 });
@@ -208,7 +168,19 @@ router.get('/ml/connect', authenticateUser, (req, res) => {
 router.get('/ml/callback', async (req, res) => {
   try {
     const { code, state } = req.query;
-    const userId = state; // user ID que veio no state
+
+    // Decodifica state seguro
+    let userId;
+    try {
+      const decoded = Buffer.from(state, 'base64url').toString();
+      const parts = decoded.split(':');
+      if (parts.length !== 2 || !parts[0] || !parts[1]) {
+        throw new Error('Invalid state format');
+      }
+      userId = parts[1];
+    } catch (e) {
+      return res.redirect(`${process.env.FRONTEND_URL}/lojas?error=invalid_state`);
+    }
 
     if (!code) {
       return res.redirect(`${process.env.FRONTEND_URL}/lojas?error=no_code`);

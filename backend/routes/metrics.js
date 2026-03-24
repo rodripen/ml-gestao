@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateUser, authorizeStore } = require('../middleware/auth');
 const tokenManager = require('../services/tokenManager');
+const analytics = require('../services/analytics');
 
 router.use(authenticateUser);
 
@@ -53,81 +54,9 @@ router.get('/:storeId/dashboard', authorizeStore, async (req, res) => {
 // ── Anúncios fracos (baixa performance) ─────────────────────
 router.get('/:storeId/weak-items', authorizeStore, async (req, res) => {
   try {
-    const mlApi = await tokenManager.getApiClient(req.params.storeId);
-    const sellerId = req.store.ml_user_id;
-
-    // Busca todos os anúncios ativos
-    const search = await mlApi.getSellerItems(sellerId, { status: 'active', limit: 50 });
-    if (!search.results || search.results.length === 0) {
-      return res.json({ weakItems: [], total: 0 });
-    }
-
-    // Busca detalhes de todos
-    const items = await mlApi.getMultipleItems(search.results);
-
-    // Busca visitas
-    let visitsMap = {};
-    try {
-      const visitsData = await mlApi.getItemVisits(search.results);
-      if (Array.isArray(visitsData)) {
-        visitsData.forEach(v => { visitsMap[v.item_id] = v.total_visits || 0; });
-      }
-    } catch (e) {}
-
-    // Analisa performance
-    const { minDays = 7, maxVisits = 50, maxSales = 0 } = req.query;
-    const now = new Date();
-
-    const weakItems = items
-      .map(item => {
-        const body = item.body;
-        if (!body) return null;
-
-        const created = new Date(body.date_created);
-        const daysActive = Math.floor((now - created) / (1000 * 60 * 60 * 24));
-        const visits = visitsMap[body.id] || 0;
-        const soldQty = body.sold_quantity || 0;
-        const conversionRate = visits > 0 ? (soldQty / visits * 100) : 0;
-
-        // Critérios de "fraco"
-        const reasons = [];
-        if (daysActive >= parseInt(minDays) && soldQty <= parseInt(maxSales)) {
-          reasons.push('sem_vendas');
-        }
-        if (daysActive >= parseInt(minDays) && visits <= parseInt(maxVisits)) {
-          reasons.push('poucas_visitas');
-        }
-        if (conversionRate < 1 && visits > 50) {
-          reasons.push('ctr_baixo');
-        }
-        if (body.available_quantity <= 2 && body.available_quantity > 0) {
-          reasons.push('estoque_baixo');
-        }
-        if (body.available_quantity === 0) {
-          reasons.push('sem_estoque');
-        }
-
-        if (reasons.length === 0) return null;
-
-        return {
-          id: body.id,
-          title: body.title,
-          price: body.price,
-          currency_id: body.currency_id,
-          available_quantity: body.available_quantity,
-          sold_quantity: soldQty,
-          visits,
-          conversion_rate: Math.round(conversionRate * 100) / 100,
-          days_active: daysActive,
-          thumbnail: body.thumbnail,
-          permalink: body.permalink,
-          reasons
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.visits - b.visits);
-
-    res.json({ weakItems, total: weakItems.length });
+    const { minDays, maxVisits, maxSales } = req.query;
+    const result = await analytics.getWeakItems(req.params.storeId, { minDays, maxVisits, maxSales });
+    res.json({ weakItems: result.items, total: result.total });
   } catch (error) {
     console.error('Erro weak items:', error.response?.data || error.message);
     res.status(500).json({ error: 'Erro ao analisar anúncios' });

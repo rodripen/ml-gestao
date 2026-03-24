@@ -8,12 +8,12 @@ class TokenManager {
   }
 
   // Salva tokens de uma loja
-  saveTokens(storeId, tokenData) {
+  async saveTokens(storeId, tokenData) {
     const db = getDb();
     const expiresAt = new Date(Date.now() + (tokenData.expires_in * 1000)).toISOString();
 
-    db.prepare(`
-      UPDATE stores 
+    await db.prepare(`
+      UPDATE stores
       SET access_token = ?, refresh_token = ?, token_expires_at = ?
       WHERE id = ?
     `).run(tokenData.access_token, tokenData.refresh_token, expiresAt, storeId);
@@ -22,7 +22,7 @@ class TokenManager {
   // Pega um token válido para a loja, renovando se necessário
   async getValidToken(storeId) {
     const db = getDb();
-    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(storeId);
+    const store = await db.prepare('SELECT * FROM stores WHERE id = ?').get(storeId);
 
     if (!store) {
       throw new Error(`Loja ${storeId} não encontrada`);
@@ -44,7 +44,7 @@ class TokenManager {
         this.appId,
         this.secret
       );
-      this.saveTokens(storeId, tokenData);
+      await this.saveTokens(storeId, tokenData);
       return tokenData.access_token;
     } catch (error) {
       console.error(`Erro ao renovar token da loja ${storeId}:`, error.message);

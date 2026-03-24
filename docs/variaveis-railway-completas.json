@@ -1,0 +1,8 @@
+{
+  "DATABASE_URL": "${{Postgres.DATABASE_URL}}",
+  "PORT": "3001",
+  "NODE_ENV": "production",
+  "ML_APP_ID": "3791858676092661",
+  "ML_SECRET": "1Io5wlZceui7MzuZBwdl0p4CplmXPRPq",
+  "ML_REDIRECT_URI": "https://ml-gestao-production.up.railway.app/api/auth/ml/callback"
+}

@@ -76,21 +76,23 @@ class MercadoLivreAPI {
   }
 
   async getMultipleItems(itemIds) {
-    // API aceita até 20 IDs por vez
+    // API aceita até 20 IDs por vez — busca chunks em paralelo
     const chunks = [];
     for (let i = 0; i < itemIds.length; i += 20) {
       chunks.push(itemIds.slice(i, i + 20));
     }
 
-    const results = [];
-    for (const chunk of chunks) {
-      const ids = chunk.join(',');
-      const { data } = await this.client.get(`/items`, {
-        params: { ids, attributes: 'id,title,price,available_quantity,sold_quantity,status,thumbnail,permalink,condition,listing_type_id,date_created' }
-      });
-      results.push(...data);
-    }
-    return results;
+    const chunkResults = await Promise.all(
+      chunks.map(async (chunk) => {
+        const ids = chunk.join(',');
+        const { data } = await this.client.get(`/items`, {
+          params: { ids, attributes: 'id,title,price,available_quantity,sold_quantity,status,thumbnail,permalink,condition,listing_type_id,date_created' }
+        });
+        return data;
+      })
+    );
+
+    return chunkResults.flat();
   }
 
   async getItemDescription(itemId) {
