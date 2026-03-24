@@ -91,16 +91,11 @@ async function start() {
     console.log('🔌 Porta:', PORT);
     console.log('🔗 DATABASE_URL presente:', !!process.env.DATABASE_URL);
 
-    // TEMPORÁRIO: Pular inicialização do banco para testar
+    // Inicializar banco de dados (obrigatório!)
     if (process.env.SKIP_DB_INIT !== 'true') {
-      try {
-        console.log('🔄 Tentando inicializar banco de dados...');
-        await initialize();
-        console.log('✅ Banco de dados inicializado');
-      } catch (dbError) {
-        console.error('⚠️ Erro ao inicializar banco (continuando sem banco):', dbError.message);
-        // Continuar sem banco para pelo menos ter o servidor rodando
-      }
+      console.log('🔄 Tentando inicializar banco de dados...');
+      await initialize(); // Se falhar, servidor deve crashar!
+      console.log('✅ Banco de dados inicializado');
     } else {
       console.log('⏭️ Pulando inicialização do banco (SKIP_DB_INIT=true)');
     }
