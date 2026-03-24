@@ -101,7 +101,20 @@ async function initializePostgres() {
     const schema = fs.readFileSync(schemaPath, 'utf-8');
     const pgPool = getPostgresPool();
 
-    await pgPool.query(schema);
+    // Split schema into individual statements (separated by semicolons)
+    // Filter out empty statements and comments
+    const statements = schema
+      .split(';')
+      .map(stmt => stmt.trim())
+      .filter(stmt => stmt.length > 0 && !stmt.startsWith('--'));
+
+    // Execute each statement
+    for (const statement of statements) {
+      if (statement.length > 0) {
+        await pgPool.query(statement);
+      }
+    }
+
     console.log('✅ PostgreSQL inicializado com sucesso!');
   } catch (error) {
     console.error('❌ Erro ao inicializar PostgreSQL:', error.message);
