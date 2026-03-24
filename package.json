@@ -1,0 +1,24 @@
+{
+  "name": "ml-gestao",
+  "version": "1.0.0",
+  "description": "Sistema de Gestão Mercado Livre",
+  "scripts": {
+    "install:backend": "cd backend && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "install:all": "npm run install:backend && npm run install:frontend",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build:all": "npm run build:backend && npm run build:frontend",
+    "start:backend": "cd backend && npm start",
+    "start:frontend": "cd frontend && npm start",
+    "start:prod": "npm run migrate && concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "migrate": "cd backend && npm run db:migrate",
+    "dev": "concurrently \"npm run start:backend\" \"npm run start:frontend\""
+  },
+  "dependencies": {
+    "concurrently": "^7.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

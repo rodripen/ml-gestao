@@ -1,0 +1,13 @@
+
+# nixpacks.toml
+[phases.setup]
+nixPkgs = ["nodejs-18_x", "postgresql"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build:all"]
+
+[start]
+cmd = "npm run start:prod"

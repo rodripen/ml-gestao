@@ -1,0 +1,133 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-mluser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-mlpass123}
+      POSTGRES_DB: ${DB_NAME:-ml_gestao}
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/database/schema-postgresql.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-mluser}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mlnet
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3001}
+
+      # Database
+      DATABASE_URL: postgresql://${DB_USER:-mluser}:${DB_PASSWORD:-mlpass123}@postgres:5432/${DB_NAME:-ml_gestao}?sslmode=disable
+
+      # Mercado Livre
+      ML_APP_ID: ${ML_APP_ID}
+      ML_SECRET: ${ML_SECRET}
+      ML_REDIRECT_URI: ${ML_REDIRECT_URI:-https://seu-dominio.com/api/auth/ml/callback}
+
+      # Security
+      JWT_SECRET: ${JWT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+
+      # Frontend URL
+      FRONTEND_URL: ${FRONTEND_URL:-https://seu-dominio.com}
+
+      # Features
+      ENABLE_AUTO_RESPONSE: ${ENABLE_AUTO_RESPONSE:-true}
+      ENABLE_AUTO_REPUBLISH: ${ENABLE_AUTO_REPUBLISH:-true}
+      ENABLE_CLAUDE_AI: ${ENABLE_CLAUDE_AI:-true}
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    volumes:
+      - ./backend/uploads:/app/uploads
+    networks:
+      - mlnet
+    labels:
+      - "coolify.managed=true"
+      - "coolify.type=service"
+      - "coolify.name=ml-backend"
+
+  # Frontend Next.js
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.seu-dominio.com}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:3001}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    networks:
+      - mlnet
+    labels:
+      - "coolify.managed=true"
+      - "coolify.type=application"
+      - "coolify.name=ml-frontend"
+      - "coolify.domain=seu-dominio.com"
+
+  # Redis para cache e filas (opcional)
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - mlnet
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Nginx Proxy (opcional - Coolify gerencia isso)
+  # nginx:
+  #   image: nginx:alpine
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - backend
+  #     - frontend
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   networks:
+  #     - mlnet
+
+networks:
+  mlnet:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
