@@ -30,30 +30,45 @@ router.get('/debug/db-test', async (req, res) => {
 // ── Registro de usuário SaaS ────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
+    console.log('[REGISTER] Iniciando registro:', req.body.email);
+
     const { email, password, name } = req.body;
     if (!email || !password || !name) {
       return res.status(400).json({ error: 'Email, senha e nome são obrigatórios' });
     }
 
+    console.log('[REGISTER] Getting DB connection...');
     const db = getDb();
+    console.log('[REGISTER] DB type:', db.isPostgres ? 'PostgreSQL' : 'SQLite');
+
+    console.log('[REGISTER] Checking if email exists...');
     const stmt = db.prepare('SELECT id FROM users WHERE email = ?');
     const existing = await stmt.get(email);
+    console.log('[REGISTER] Existing user:', existing);
+
     if (existing) {
       return res.status(409).json({ error: 'Email já cadastrado' });
     }
 
+    console.log('[REGISTER] Generating UUID and hashing password...');
     const id = uuidv4();
     const passwordHash = await bcrypt.hash(password, 12);
+    console.log('[REGISTER] UUID:', id, 'Hash length:', passwordHash.length);
 
+    console.log('[REGISTER] Inserting user into database...');
     const insertStmt = db.prepare('INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)');
-    await insertStmt.run(id, email, passwordHash, name);
+    const result = await insertStmt.run(id, email, passwordHash, name);
+    console.log('[REGISTER] Insert result:', result);
 
+    console.log('[REGISTER] Generating JWT token...');
     const token = jwt.sign({ id, email, name }, process.env.JWT_SECRET || 'dev-secret-key', { expiresIn: '7d' });
 
+    console.log('[REGISTER] Registration successful!');
     res.status(201).json({ user: { id, email, name }, token });
   } catch (error) {
-    console.error('Erro no registro:', error);
-    res.status(500).json({ error: 'Erro interno' });
+    console.error('[REGISTER] ERROR:', error.message);
+    console.error('[REGISTER] Stack:', error.stack);
+    res.status(500).json({ error: 'Erro interno', details: error.message });
   }
 });
 
