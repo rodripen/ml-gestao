@@ -54,6 +54,60 @@ router.get('/debug/check-tables', async (req, res) => {
   }
 });
 
+// ── DEBUG: Criar schema manualmente ──────────────────────────
+router.get('/debug/create-schema', async (req, res) => {
+  try {
+    const db = getDb();
+
+    if (!db.isPostgres) {
+      return res.status(400).json({ error: 'Only for PostgreSQL' });
+    }
+
+    console.log('[DEBUG] Creating schema manually...');
+
+    // Criar tabela users
+    await db.pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(36) PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        phone VARCHAR(20),
+        company_name VARCHAR(255),
+        is_active BOOLEAN DEFAULT true,
+        email_verified BOOLEAN DEFAULT false,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('[DEBUG] Users table created');
+
+    // Criar tabela stores
+    await db.pool.query(`
+      CREATE TABLE IF NOT EXISTS stores (
+        id VARCHAR(36) PRIMARY KEY,
+        user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        ml_user_id VARCHAR(50) NOT NULL,
+        ml_nickname VARCHAR(100),
+        ml_email VARCHAR(255),
+        ml_site VARCHAR(10) DEFAULT 'MLB',
+        access_token TEXT,
+        refresh_token TEXT,
+        token_expires_at TIMESTAMP WITH TIME ZONE,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('[DEBUG] Stores table created');
+
+    res.json({ success: true, message: 'Schema created successfully!' });
+  } catch (error) {
+    console.error('[DEBUG] Error creating schema:', error);
+    res.status(500).json({ error: error.message, details: error.stack });
+  }
+});
+
 // ── Registro de usuário SaaS ────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
