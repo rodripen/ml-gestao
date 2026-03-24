@@ -27,6 +27,33 @@ router.get('/debug/db-test', async (req, res) => {
   }
 });
 
+// ── DEBUG: Verificar se tabelas existem ─────────────────────
+router.get('/debug/check-tables', async (req, res) => {
+  try {
+    const db = getDb();
+
+    // Query para listar tabelas no PostgreSQL
+    const query = `
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+      ORDER BY table_name
+    `;
+
+    const stmt = db.prepare(query);
+    const tables = await stmt.all();
+
+    res.json({
+      success: true,
+      tables: tables.map(t => t.table_name),
+      count: tables.length
+    });
+  } catch (error) {
+    console.error('[DEBUG] Error checking tables:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ── Registro de usuário SaaS ────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
