@@ -8,95 +8,34 @@ const MercadoLivreAPI = require('../services/mercadolivre');
 const tokenManager = require('../services/tokenManager');
 const { authenticateUser } = require('../middleware/auth');
 
-// ── TEMPORÁRIO: Criar schema ────────────────────────────────
-router.get('/create-schema-temp', async (req, res) => {
-  try {
-    const db = getDb();
-    if (!db.isPostgres) {
-      return res.status(400).json({ error: 'Only for PostgreSQL' });
-    }
-
-    // Criar tabelas essenciais
-    await db.pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id VARCHAR(36) PRIMARY KEY,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        name VARCHAR(255) NOT NULL,
-        phone VARCHAR(20),
-        company_name VARCHAR(255),
-        is_active BOOLEAN DEFAULT true,
-        email_verified BOOLEAN DEFAULT false,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await db.pool.query(`
-      CREATE TABLE IF NOT EXISTS stores (
-        id VARCHAR(36) PRIMARY KEY,
-        user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        ml_user_id VARCHAR(50) NOT NULL,
-        ml_nickname VARCHAR(100),
-        ml_email VARCHAR(255),
-        ml_site VARCHAR(10) DEFAULT 'MLB',
-        access_token TEXT,
-        refresh_token TEXT,
-        token_expires_at TIMESTAMP WITH TIME ZONE,
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    res.json({ success: true, message: 'Tables created!' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // ── Registro de usuário SaaS ────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
-    console.log('[REGISTER] Iniciando registro:', req.body.email);
-
     const { email, password, name } = req.body;
     if (!email || !password || !name) {
       return res.status(400).json({ error: 'Email, senha e nome são obrigatórios' });
     }
 
-    console.log('[REGISTER] Getting DB connection...');
     const db = getDb();
-    console.log('[REGISTER] DB type:', db.isPostgres ? 'PostgreSQL' : 'SQLite');
-
-    console.log('[REGISTER] Checking if email exists...');
     const stmt = db.prepare('SELECT id FROM users WHERE email = ?');
     const existing = await stmt.get(email);
-    console.log('[REGISTER] Existing user:', existing);
 
     if (existing) {
       return res.status(409).json({ error: 'Email já cadastrado' });
     }
 
-    console.log('[REGISTER] Generating UUID and hashing password...');
     const id = uuidv4();
     const passwordHash = await bcrypt.hash(password, 12);
-    console.log('[REGISTER] UUID:', id, 'Hash length:', passwordHash.length);
 
-    console.log('[REGISTER] Inserting user into database...');
     const insertStmt = db.prepare('INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)');
-    const result = await insertStmt.run(id, email, passwordHash, name);
-    console.log('[REGISTER] Insert result:', result);
+    await insertStmt.run(id, email, passwordHash, name);
 
-    console.log('[REGISTER] Generating JWT token...');
     const token = jwt.sign({ id, email, name }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    console.log('[REGISTER] Registration successful!');
     res.status(201).json({ user: { id, email, name }, token });
   } catch (error) {
-    console.error('[REGISTER] ERROR:', error.message);
-    console.error('[REGISTER] Stack:', error.stack);
-    res.status(500).json({ error: 'Erro interno', details: error.message });
+    console.error('Erro no registro:', error);
+    res.status(500).json({ error: 'Erro interno' });
   }
 });
 
