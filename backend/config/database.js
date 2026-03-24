@@ -110,6 +110,20 @@ async function initializePostgres() {
     const client = await pgPool.connect();
     console.log('✅ Conectado ao PostgreSQL com sucesso!');
 
+    // Se RECREATE_SCHEMA=true, dropar todas as tabelas primeiro
+    if (process.env.RECREATE_SCHEMA === 'true') {
+      console.log('🔄 RECREATE_SCHEMA=true - Dropando tabelas antigas...');
+      try {
+        await client.query('DROP TABLE IF EXISTS answered_questions CASCADE');
+        await client.query('DROP TABLE IF EXISTS response_templates CASCADE');
+        await client.query('DROP TABLE IF EXISTS stores CASCADE');
+        await client.query('DROP TABLE IF EXISTS users CASCADE');
+        console.log('✅ Tabelas antigas removidas!');
+      } catch (err) {
+        console.error('⚠️  Erro ao dropar tabelas (pode ser normal se não existirem):', err.message);
+      }
+    }
+
     // Usar schema mínimo para evitar problemas com extensões no Railway
     const schemaPath = path.join(__dirname, '..', 'database', 'schema-minimal.sql');
 
