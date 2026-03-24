@@ -17,7 +17,8 @@ router.post('/register', async (req, res) => {
     }
 
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    const stmt = db.prepare('SELECT id FROM users WHERE email = ?');
+    const existing = await stmt.get(email);
     if (existing) {
       return res.status(409).json({ error: 'Email já cadastrado' });
     }
@@ -25,10 +26,10 @@ router.post('/register', async (req, res) => {
     const id = uuidv4();
     const passwordHash = await bcrypt.hash(password, 12);
 
-    db.prepare('INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)')
-      .run(id, email, passwordHash, name);
+    const insertStmt = db.prepare('INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)');
+    await insertStmt.run(id, email, passwordHash, name);
 
-    const token = jwt.sign({ id, email, name }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id, email, name }, process.env.JWT_SECRET || 'dev-secret-key', { expiresIn: '7d' });
 
     res.status(201).json({ user: { id, email, name }, token });
   } catch (error) {
@@ -42,7 +43,9 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     const db = getDb();
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+
+    const stmt = db.prepare('SELECT * FROM users WHERE email = ?');
+    const user = await stmt.get(email);
 
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return res.status(401).json({ error: 'Email ou senha incorretos' });
@@ -50,7 +53,7 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign(
       { id: user.id, email: user.email, name: user.name },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET || 'dev-secret-key',
       { expiresIn: '7d' }
     );
 
@@ -62,11 +65,20 @@ router.post('/login', async (req, res) => {
 });
 
 // ── Perfil do usuário ───────────────────────────────────────
-router.get('/me', authenticateUser, (req, res) => {
-  const db = getDb();
-  const user = db.prepare('SELECT id, email, name, created_at FROM users WHERE id = ?').get(req.user.id);
-  const stores = db.prepare('SELECT id, ml_user_id, ml_nickname, ml_email, is_active, created_at FROM stores WHERE user_id = ?').all(req.user.id);
-  res.json({ user, stores });
+router.get('/me', authenticateUser, async (req, res) => {
+  try {
+    const db = getDb();
+    const userStmt = db.prepare('SELECT id, email, name, created_at FROM users WHERE id = ?');
+    const user = await userStmt.get(req.user.id);
+
+    const storesStmt = db.prepare('SELECT id, ml_user_id, ml_nickname, ml_email, is_active, created_at FROM stores WHERE user_id = ?');
+    const stores = await storesStmt.all(req.user.id);
+
+    res.json({ user, stores });
+  } catch (error) {
+    console.error('Erro ao buscar perfil:', error);
+    res.status(500).json({ error: 'Erro interno' });
+  }
 });
 
 // ── Conectar loja ML (inicia OAuth) ─────────────────────────
@@ -105,27 +117,30 @@ router.get('/ml/callback', async (req, res) => {
     const db = getDb();
 
     // Verifica se essa conta ML já está conectada para esse usuário
-    const existingStore = db.prepare(
+    const existingStmt = db.prepare(
       'SELECT id FROM stores WHERE user_id = ? AND ml_user_id = ?'
-    ).get(userId, String(mlUser.id));
+    );
+    const existingStore = await existingStmt.get(userId, String(mlUser.id));
 
     const storeId = existingStore ? existingStore.id : uuidv4();
     const expiresAt = new Date(Date.now() + (tokenData.expires_in * 1000)).toISOString();
 
     if (existingStore) {
-      db.prepare(`
-        UPDATE stores 
-        SET access_token = ?, refresh_token = ?, token_expires_at = ?, 
+      const updateStmt = db.prepare(`
+        UPDATE stores
+        SET access_token = ?, refresh_token = ?, token_expires_at = ?,
             ml_nickname = ?, ml_email = ?, is_active = 1
         WHERE id = ?
-      `).run(tokenData.access_token, tokenData.refresh_token, expiresAt,
+      `);
+      await updateStmt.run(tokenData.access_token, tokenData.refresh_token, expiresAt,
              mlUser.nickname, mlUser.email, storeId);
     } else {
-      db.prepare(`
-        INSERT INTO stores (id, user_id, ml_user_id, ml_nickname, ml_email, 
+      const insertStmt = db.prepare(`
+        INSERT INTO stores (id, user_id, ml_user_id, ml_nickname, ml_email,
                            access_token, refresh_token, token_expires_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(storeId, userId, String(mlUser.id), mlUser.nickname, mlUser.email,
+      `);
+      await insertStmt.run(storeId, userId, String(mlUser.id), mlUser.nickname, mlUser.email,
              tokenData.access_token, tokenData.refresh_token, expiresAt);
     }
 
@@ -137,25 +152,37 @@ router.get('/ml/callback', async (req, res) => {
 });
 
 // ── Listar lojas do usuário ─────────────────────────────────
-router.get('/stores', authenticateUser, (req, res) => {
-  const db = getDb();
-  const stores = db.prepare(
-    'SELECT id, ml_user_id, ml_nickname, ml_email, is_active, created_at FROM stores WHERE user_id = ?'
-  ).all(req.user.id);
-  res.json({ stores });
+router.get('/stores', authenticateUser, async (req, res) => {
+  try {
+    const db = getDb();
+    const stmt = db.prepare(
+      'SELECT id, ml_user_id, ml_nickname, ml_email, is_active, created_at FROM stores WHERE user_id = ?'
+    );
+    const stores = await stmt.all(req.user.id);
+    res.json({ stores });
+  } catch (error) {
+    console.error('Erro ao listar lojas:', error);
+    res.status(500).json({ error: 'Erro interno' });
+  }
 });
 
 // ── Desconectar loja ────────────────────────────────────────
-router.delete('/stores/:storeId', authenticateUser, (req, res) => {
-  const db = getDb();
-  const result = db.prepare(
-    'UPDATE stores SET is_active = 0, access_token = NULL, refresh_token = NULL WHERE id = ? AND user_id = ?'
-  ).run(req.params.storeId, req.user.id);
+router.delete('/stores/:storeId', authenticateUser, async (req, res) => {
+  try {
+    const db = getDb();
+    const stmt = db.prepare(
+      'UPDATE stores SET is_active = 0, access_token = NULL, refresh_token = NULL WHERE id = ? AND user_id = ?'
+    );
+    const result = await stmt.run(req.params.storeId, req.user.id);
 
-  if (result.changes === 0) {
-    return res.status(404).json({ error: 'Loja não encontrada' });
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Loja não encontrada' });
+    }
+    res.json({ message: 'Loja desconectada' });
+  } catch (error) {
+    console.error('Erro ao desconectar loja:', error);
+    res.status(500).json({ error: 'Erro interno' });
   }
-  res.json({ message: 'Loja desconectada' });
 });
 
 module.exports = router;
