@@ -4,10 +4,10 @@
 nixPkgs = ["nodejs-18_x", "postgresql"]
 
 [phases.install]
-cmds = ["npm ci"]
+cmds = ["cd backend && npm install"]
 
 [phases.build]
-cmds = ["npm run build:all"]
+cmds = ["echo 'Build complete'"]
 
 [start]
-cmd = "npm run start:prod"
+cmd = "cd backend && npm start"
