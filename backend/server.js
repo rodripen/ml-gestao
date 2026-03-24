@@ -86,17 +86,35 @@ app.get('/api/test-ml-oauth', (req, res) => {
 // ── Start ───────────────────────────────────────────────────
 async function start() {
   try {
-    // Inicializar banco de dados
-    await initialize();
+    console.log('🔄 Iniciando servidor...');
+    console.log('📊 Ambiente:', process.env.NODE_ENV || 'development');
+    console.log('🔌 Porta:', PORT);
+    console.log('🔗 DATABASE_URL presente:', !!process.env.DATABASE_URL);
+
+    // TEMPORÁRIO: Pular inicialização do banco para testar
+    if (process.env.SKIP_DB_INIT !== 'true') {
+      try {
+        console.log('🔄 Tentando inicializar banco de dados...');
+        await initialize();
+        console.log('✅ Banco de dados inicializado');
+      } catch (dbError) {
+        console.error('⚠️ Erro ao inicializar banco (continuando sem banco):', dbError.message);
+        // Continuar sem banco para pelo menos ter o servidor rodando
+      }
+    } else {
+      console.log('⏭️ Pulando inicialização do banco (SKIP_DB_INIT=true)');
+    }
 
     // Iniciar servidor
-    app.listen(PORT, () => {
-      console.log(`\n🚀 ML Gestão Backend rodando em http://localhost:${PORT}`);
-      console.log(`📋 Ferramentas MCP: GET http://localhost:${PORT}/api/mcp/tools`);
-      console.log(`🔑 OAuth ML: GET http://localhost:${PORT}/api/auth/ml/connect\n`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`\n✅ ML Gestão Backend ONLINE`);
+      console.log(`🌐 URL: ${process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://localhost:${PORT}`}`);
+      console.log(`📋 Health: /api/health`);
+      console.log(`🔑 OAuth ML: /api/auth/ml/connect\n`);
     });
   } catch (error) {
-    console.error('❌ Erro ao iniciar servidor:', error);
+    console.error('❌ Erro fatal ao iniciar servidor:', error);
+    console.error('Stack trace:', error.stack);
     process.exit(1);
   }
 }
