@@ -118,11 +118,13 @@ router.get('/ml/callback', async (req, res) => {
       }
       userId = parts[1];
     } catch (e) {
-      return res.redirect(`${process.env.FRONTEND_URL}/lojas?error=invalid_state`);
+      const frontendUrl = process.env.FRONTEND_URL || 'https://ml-gestao.vercel.app';
+      return res.redirect(`${frontendUrl}/lojas?error=invalid_state`);
     }
 
     if (!code) {
-      return res.redirect(`${process.env.FRONTEND_URL}/lojas?error=no_code`);
+      const frontendUrl = process.env.FRONTEND_URL || 'https://ml-gestao.vercel.app';
+      return res.redirect(`${frontendUrl}/lojas?error=no_code`);
     }
 
     // Troca code por tokens
@@ -167,10 +169,12 @@ router.get('/ml/callback', async (req, res) => {
              tokenData.access_token, tokenData.refresh_token, expiresAt);
     }
 
-    res.redirect(`${process.env.FRONTEND_URL}/lojas?connected=true&store=${storeId}`);
+    const frontendUrl = process.env.FRONTEND_URL || 'https://ml-gestao.vercel.app';
+    res.redirect(`${frontendUrl}/lojas?connected=true&store=${storeId}`);
   } catch (error) {
     console.error('Erro no callback ML:', error.response?.data || error.message);
-    res.redirect(`${process.env.FRONTEND_URL}/lojas?error=auth_failed`);
+    const frontendUrl = process.env.FRONTEND_URL || 'https://ml-gestao.vercel.app';
+    res.redirect(`${frontendUrl}/lojas?error=auth_failed`);
   }
 });
 
