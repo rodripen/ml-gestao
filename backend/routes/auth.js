@@ -54,57 +54,54 @@ router.get('/debug/check-tables', async (req, res) => {
   }
 });
 
-// ── DEBUG: Criar schema manualmente ──────────────────────────
-router.get('/debug/create-schema', async (req, res) => {
+// ── DEBUG: Reset completo do banco (DROP e CREATE) ──────────
+router.post('/debug/reset-database', async (req, res) => {
   try {
+    // Proteção simples - exigir confirmação
+    if (req.body.confirm !== 'RESET_DATABASE_NOW') {
+      return res.status(400).json({
+        error: 'Confirmação necessária',
+        message: 'Envie { "confirm": "RESET_DATABASE_NOW" } para confirmar o reset'
+      });
+    }
+
     const db = getDb();
 
     if (!db.isPostgres) {
       return res.status(400).json({ error: 'Only for PostgreSQL' });
     }
 
-    console.log('[DEBUG] Creating schema manually...');
+    console.log('[RESET] Iniciando reset completo do banco...');
 
-    // Criar tabela users
-    await db.pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id VARCHAR(36) PRIMARY KEY,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        name VARCHAR(255) NOT NULL,
-        phone VARCHAR(20),
-        company_name VARCHAR(255),
-        is_active BOOLEAN DEFAULT true,
-        email_verified BOOLEAN DEFAULT false,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log('[DEBUG] Users table created');
+    // Drop todas as tabelas
+    await db.pool.query('DROP TABLE IF EXISTS answered_questions CASCADE');
+    await db.pool.query('DROP TABLE IF EXISTS response_templates CASCADE');
+    await db.pool.query('DROP TABLE IF EXISTS stores CASCADE');
+    await db.pool.query('DROP TABLE IF EXISTS users CASCADE');
+    console.log('[RESET] Tabelas removidas');
 
-    // Criar tabela stores
-    await db.pool.query(`
-      CREATE TABLE IF NOT EXISTS stores (
-        id VARCHAR(36) PRIMARY KEY,
-        user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        ml_user_id VARCHAR(50) NOT NULL,
-        ml_nickname VARCHAR(100),
-        ml_email VARCHAR(255),
-        ml_site VARCHAR(10) DEFAULT 'MLB',
-        access_token TEXT,
-        refresh_token TEXT,
-        token_expires_at TIMESTAMP WITH TIME ZONE,
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log('[DEBUG] Stores table created');
+    // Recriar usando o schema
+    const path = require('path');
+    const fs = require('fs');
+    const schemaPath = path.join(__dirname, '..', 'database', 'schema-minimal.sql');
+    const schema = fs.readFileSync(schemaPath, 'utf-8');
 
-    res.json({ success: true, message: 'Schema created successfully!' });
+    const statements = schema.split(';').filter(stmt => {
+      const trimmed = stmt.trim();
+      return trimmed && !trimmed.startsWith('--');
+    });
+
+    for (const stmt of statements) {
+      if (stmt.trim()) {
+        await db.pool.query(stmt);
+      }
+    }
+
+    console.log('[RESET] Schema recriado com sucesso!');
+    res.json({ success: true, message: 'Database reset successfully!' });
   } catch (error) {
-    console.error('[DEBUG] Error creating schema:', error);
-    res.status(500).json({ error: error.message, details: error.stack });
+    console.error('[RESET] Error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

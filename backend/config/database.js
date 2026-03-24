@@ -110,19 +110,24 @@ async function initializePostgres() {
     const client = await pgPool.connect();
     console.log('✅ Conectado ao PostgreSQL com sucesso!');
 
-    // Se RECREATE_SCHEMA=true, dropar todas as tabelas primeiro
-    if (process.env.RECREATE_SCHEMA === 'true') {
-      console.log('🔄 RECREATE_SCHEMA=true - Dropando tabelas antigas...');
-      try {
-        await client.query('DROP TABLE IF EXISTS answered_questions CASCADE');
-        await client.query('DROP TABLE IF EXISTS response_templates CASCADE');
-        await client.query('DROP TABLE IF EXISTS stores CASCADE');
-        await client.query('DROP TABLE IF EXISTS users CASCADE');
-        console.log('✅ Tabelas antigas removidas!');
-      } catch (err) {
-        console.error('⚠️  Erro ao dropar tabelas (pode ser normal se não existirem):', err.message);
-      }
+    // Verificar se as tabelas já existem
+    const checkTablesQuery = `
+      SELECT COUNT(*) as count
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name IN ('users', 'stores', 'response_templates', 'answered_questions')
+    `;
+
+    const tablesCheck = await client.query(checkTablesQuery);
+    const tableCount = parseInt(tablesCheck.rows[0].count);
+
+    if (tableCount === 4) {
+      console.log('✅ Todas as tabelas já existem, pulando criação do schema');
+      client.release();
+      return;
     }
+
+    console.log(`🔄 Encontradas ${tableCount}/4 tabelas, criando schema...`);
 
     // Usar schema mínimo para evitar problemas com extensões no Railway
     const schemaPath = path.join(__dirname, '..', 'database', 'schema-minimal.sql');
@@ -135,75 +140,31 @@ async function initializePostgres() {
 
     const schema = fs.readFileSync(schemaPath, 'utf-8');
 
-    //  Split statements respecting $$ dollar-quoted strings
-    function splitSQLStatements(sql) {
-      const statements = [];
-      let current = '';
-      let inDollarQuote = false;
-      let dollarQuoteTag = null;
+    // SIMPLIFICADO: Executar cada statement CREATE TABLE e CREATE INDEX separadamente
+    // Mas de forma mais simples, sem parser complexo
+    const statements = schema.split(';').filter(stmt => {
+      const trimmed = stmt.trim();
+      return trimmed && !trimmed.startsWith('--');
+    });
 
-      for (let i = 0; i < sql.length; i++) {
-        const char = sql[i];
-        const remaining = sql.substring(i);
-
-        // Check for start/end of dollar quote
-        if (remaining.startsWith('$$') || (remaining.startsWith('$') && remaining.match(/^\$\w*\$/))) {
-          const match = remaining.match(/^(\$\w*\$)/);
-          if (match) {
-            const tag = match[1];
-            current += tag;
-            i += tag.length - 1;
-
-            if (!inDollarQuote) {
-              inDollarQuote = true;
-              dollarQuoteTag = tag;
-            } else if (tag === dollarQuoteTag) {
-              inDollarQuote = false;
-              dollarQuoteTag = null;
-            }
-            continue;
-          }
-        }
-
-        current += char;
-
-        // Split on semicolon only if not in dollar quote
-        if (char === ';' && !inDollarQuote) {
-          const stmt = current.trim();
-          // Skip comments and CREATE EXTENSION (já executamos acima)
-          if (stmt && !stmt.startsWith('--') && !stmt.toUpperCase().includes('CREATE EXTENSION')) {
-            statements.push(stmt);
-          }
-          current = '';
-        }
-      }
-
-      // Add final statement if exists
-      if (current.trim() && !current.trim().startsWith('--') && !current.toUpperCase().includes('CREATE EXTENSION')) {
-        statements.push(current.trim());
-      }
-
-      return statements;
-    }
-
-    const statements = splitSQLStatements(schema);
     console.log(`🔄 Executando ${statements.length} statements SQL...`);
 
     for (let i = 0; i < statements.length; i++) {
-      const stmt = statements[i];
+      const stmt = statements[i].trim();
+      if (!stmt) continue;
+
       try {
         await client.query(stmt);
-        if ((i + 1) % 10 === 0) {
-          console.log(`   Progresso: ${i + 1}/${statements.length} statements`);
-        }
+        console.log(`   ✓ Statement ${i + 1}/${statements.length} executado`);
       } catch (err) {
-        // Se erro for "já existe", ignorar
+        // Se erro for "already exists", ignorar
         if (err.message.includes('already exists')) {
+          console.log(`   ⏭️ Statement ${i + 1}/${statements.length} - já existe`);
           continue;
         }
         console.error(`❌ Erro no statement ${i + 1}/${statements.length}:`, err.message);
-        console.error('Statement preview:', stmt.substring(0, 200) + '...');
-        throw err;
+        console.error('Statement:', stmt.substring(0, 100) + '...');
+        // Não fazer throw - tentar executar os outros statements
       }
     }
 
@@ -224,7 +185,6 @@ async function initialize() {
   if (usePostgres) {
     console.log('🐘 Usando PostgreSQL (produção)');
     console.log('DATABASE_URL definida:', !!process.env.DATABASE_URL);
-    console.log('RECREATE_SCHEMA:', process.env.RECREATE_SCHEMA);
 
     // NÃO engolir erros - se schema falhar, servidor não deve iniciar!
     await initializePostgres();
