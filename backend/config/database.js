@@ -97,24 +97,15 @@ async function initializePostgres() {
     const client = await pgPool.connect();
     console.log('✅ Conectado ao PostgreSQL com sucesso!');
 
-    // Verificar se já tem tabelas (schema já foi executado)
-    const result = await client.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_schema = 'public'
-        AND table_name = 'users'
-      );
-    `);
+    // Por enquanto, apenas testar conexão
+    const testResult = await client.query('SELECT 1 as test');
+    console.log('✅ Teste de query funcionou:', testResult.rows[0]);
 
-    const tablesExist = result.rows[0].exists;
+    client.release();
+    console.log('✅ PostgreSQL está funcionando!');
+    return;
 
-    if (tablesExist) {
-      console.log('✅ Schema já existe, pulando inicialização');
-      client.release();
-      return;
-    }
-
-    console.log('🔄 Schema não encontrado, inicializando...');
+    // TODO: Implementar schema depois que conexão estiver funcionando
 
     // Usar schema mínimo para evitar problemas com extensões no Railway
     const schemaPath = path.join(__dirname, '..', 'database', 'schema-minimal.sql');
@@ -215,7 +206,14 @@ async function initializePostgres() {
 async function initialize() {
   if (usePostgres) {
     console.log('🐘 Usando PostgreSQL (produção)');
-    await initializePostgres();
+    console.log('DATABASE_URL definida:', !!process.env.DATABASE_URL);
+
+    try {
+      await initializePostgres();
+    } catch (error) {
+      console.error('⚠️  AVISO: Erro ao inicializar PostgreSQL, continuando sem banco:', error.message);
+      // Continuar mesmo se falhar - permite debug
+    }
   } else {
     console.log('💾 Usando SQLite (desenvolvimento)');
     getSQLiteDb(); // Inicializa SQLite

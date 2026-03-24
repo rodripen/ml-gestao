@@ -62,7 +62,14 @@ app.get('/api/mcp/tools', (req, res) => {
 
 // ── Health check ────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    nodeVersion: process.version,
+    env: process.env.NODE_ENV || 'development',
+    hasDatabaseUrl: !!process.env.DATABASE_URL,
+    port: process.env.PORT || PORT
+  });
 });
 
 // ── Teste OAuth ML (público - sem autenticação) ────────────
