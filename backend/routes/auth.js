@@ -82,19 +82,50 @@ router.get('/me', authenticateUser, async (req, res) => {
   }
 });
 
+// ── CONSERTO RÁPIDO: Reset do banco ─────────────────────────
+router.get('/fix-now', async (req, res) => {
+  const db = getDb();
+  try {
+    // Criar tabelas se não existirem
+    await db.pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(36) PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await db.pool.query(`
+      CREATE TABLE IF NOT EXISTS stores (
+        id VARCHAR(36) PRIMARY KEY,
+        user_id VARCHAR(36) REFERENCES users(id) ON DELETE CASCADE,
+        ml_user_id VARCHAR(50) NOT NULL,
+        ml_nickname VARCHAR(100),
+        ml_email VARCHAR(255),
+        access_token TEXT,
+        refresh_token TEXT,
+        token_expires_at TIMESTAMP,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    res.json({ message: 'Banco consertado! Tente novamente.' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ── Conectar loja ML (inicia OAuth) ─────────────────────────
 router.get('/ml/connect', authenticateUser, async (req, res) => {
-  // Simplificado: usa apenas userId como state
-  // TODO: Melhorar segurança com CSRF token depois
   const state = req.user.id;
-
   const authUrl = MercadoLivreAPI.getAuthUrl(
     process.env.ML_APP_ID,
     process.env.ML_REDIRECT_URI,
     state
   );
-
-  console.log('[ML CONNECT] Generated auth URL for user:', req.user.id);
   res.json({ authUrl });
 });
 
@@ -102,16 +133,10 @@ router.get('/ml/connect', authenticateUser, async (req, res) => {
 router.get('/ml/callback', async (req, res) => {
   try {
     const { code, state } = req.query;
-
-    console.log('[ML CALLBACK] Received:', { code: !!code, state });
-
-    // Simplificado: state é apenas o userId
     const userId = state;
 
     if (!userId) {
-      console.error('[ML CALLBACK] No state/userId provided');
-      const frontendUrl = process.env.FRONTEND_URL || 'https://ml-gestao.vercel.app';
-      return res.redirect(`${frontendUrl}/lojas?error=invalid_state`);
+      return res.redirect('https://ml-gestao.vercel.app/lojas?error=invalid_state');
     }
 
     if (!code) {
